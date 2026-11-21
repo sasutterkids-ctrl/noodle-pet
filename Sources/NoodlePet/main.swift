@@ -66,6 +66,49 @@ private func loadDanceBreakTrack() -> Data? {
     return makeDiscoTrack()
 }
 
+private func makeBoxShakeSound() -> Data {
+    let sampleRate: UInt32 = 44_100
+    let duration = 0.85
+    let sampleCount = Int(Double(sampleRate) * duration)
+    var data = Data()
+
+    func appendBytes<T>(_ value: T) {
+        var value = value
+        withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
+    }
+
+    data.append(contentsOf: Array("RIFF".utf8))
+    appendBytes(UInt32(36 + sampleCount * 2).littleEndian)
+    data.append(contentsOf: Array("WAVEfmt ".utf8))
+    appendBytes(UInt32(16).littleEndian)
+    appendBytes(UInt16(1).littleEndian)
+    appendBytes(UInt16(1).littleEndian)
+    appendBytes(sampleRate.littleEndian)
+    appendBytes((sampleRate * 2).littleEndian)
+    appendBytes(UInt16(2).littleEndian)
+    appendBytes(UInt16(16).littleEndian)
+    data.append(contentsOf: Array("data".utf8))
+    appendBytes(UInt32(sampleCount * 2).littleEndian)
+
+    var noiseState: UInt32 = 0x4D595DF4
+    for index in 0..<sampleCount {
+        let time = Double(index) / Double(sampleRate)
+        let hitOne = max(0, 1 - abs(time - 0.12) / 0.07)
+        let hitTwo = max(0, 1 - abs(time - 0.38) / 0.06)
+        let hitThree = max(0, 1 - abs(time - 0.63) / 0.08)
+        let hits = hitOne + hitTwo * 0.85 + hitThree * 0.72
+        let cardboard = sin(time * 2 * .pi * 92) * 0.22 + sin(time * 2 * .pi * 147) * 0.13
+        noiseState = 1664525 &* noiseState &+ 1013904223
+        let noise = (Double(noiseState) / Double(UInt32.max) * 2 - 1) * 0.34
+        let creak = (cardboard + noise) * hits
+        let fade = min(1, time * 35) * min(1, (duration - time) * 12)
+        let sample = max(-1, min(1, creak * fade))
+        let pcm = Int16(sample * Double(Int16.max) * 0.72).littleEndian
+        appendBytes(pcm)
+    }
+    return data
+}
+
 final class DiscoOverlayView: NSView {
     var spotlightCenter = NSPoint.zero { didSet { needsDisplay = true } }
     var phase: CGFloat = 0 { didSet { needsDisplay = true } }
@@ -703,6 +746,7 @@ enum StatChangerStat: Hashable {
     case gravity
     case hunger
     case size
+    case foodValue
 }
 
 final class ToyView: NSView {
@@ -879,6 +923,13 @@ final class ToyView: NSView {
 
 final class PopcornBucketView: NSView {
     weak var delegate: AppDelegate?
+    var displayScale: CGFloat = 1 { didSet { needsDisplay = true } }
+    private var dragOffset = NSPoint.zero
+    private var lastMousePoint = NSPoint.zero
+    private var lastDragTime = Date()
+    private var dragVelocity = NSPoint.zero
+    private var didDrag = false
+    private var mouseDownPoint = NSPoint.zero
 
     init(delegate: AppDelegate) {
         self.delegate = delegate
@@ -889,6 +940,14 @@ final class PopcornBucketView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        NSGraphicsContext.saveGraphicsState()
+        if displayScale != 1 {
+            let transform = NSAffineTransform()
+            transform.translateX(by: bounds.midX, yBy: bounds.midY)
+            transform.scale(by: displayScale)
+            transform.translateX(by: -bounds.midX, yBy: -bounds.midY)
+            transform.concat()
+        }
         NSColor.black.withAlphaComponent(0.16).setFill()
         NSBezierPath(ovalIn: NSRect(x: 10, y: 5, width: 60, height: 13)).fill()
 
@@ -910,10 +969,44 @@ final class PopcornBucketView: NSView {
         for (x, y, size) in [(22, 52, 16.0), (36, 57, 17.0), (51, 53, 16.0), (63, 55, 14.0), (29, 63, 13.0), (47, 65, 14.0)] {
             NSBezierPath(ovalIn: NSRect(x: CGFloat(x) - size / 2, y: CGFloat(y) - size / 2, width: size, height: size)).fill()
         }
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     override func mouseDown(with event: NSEvent) {
-        delegate?.popcornBucketClicked()
+        guard let window else { return }
+        dragOffset = event.locationInWindow
+        lastMousePoint = NSEvent.mouseLocation
+        mouseDownPoint = lastMousePoint
+        lastDragTime = Date()
+        dragVelocity = .zero
+        didDrag = false
+        window.makeKey()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window else { return }
+        let point = NSEvent.mouseLocation
+        let now = Date()
+        let elapsed = max(0.001, now.timeIntervalSince(lastDragTime))
+        dragVelocity = NSPoint(
+            x: (point.x - lastMousePoint.x) / elapsed,
+            y: (point.y - lastMousePoint.y) / elapsed
+        )
+        lastMousePoint = point
+        lastDragTime = now
+        if hypot(point.x - mouseDownPoint.x, point.y - mouseDownPoint.y) > 5 {
+            didDrag = true
+        }
+        window.setFrameOrigin(NSPoint(x: point.x - dragOffset.x, y: point.y - dragOffset.y))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let window else { return }
+        if didDrag {
+            delegate?.popcornBucketDropped(window, velocity: dragVelocity)
+        } else {
+            delegate?.popcornBucketClicked()
+        }
     }
 }
 
@@ -1150,14 +1243,17 @@ final class StatChangerView: NSView {
     private let gravityTitle = NSTextField(labelWithString: "Gravity")
     private let hungerTitle = NSTextField(labelWithString: "Hunger level")
     private let sizeTitle = NSTextField(labelWithString: "Size")
+    private let foodTitle = NSTextField(labelWithString: "Food value")
     private let bounceValue = NSTextField(labelWithString: "78%")
     private let gravityValue = NSTextField(labelWithString: "980")
     private let hungerValue = NSTextField(labelWithString: "100%")
     private let sizeValue = NSTextField(labelWithString: "100%")
+    private let foodValue = NSTextField(labelWithString: "35")
     private let bounceSlider = NSSlider(value: 0.78, minValue: 0.1, maxValue: 1.0, target: nil, action: nil)
     private let gravitySlider = NSSlider(value: 980, minValue: 0, maxValue: 1800, target: nil, action: nil)
     private let hungerSlider = NSSlider(value: 100, minValue: 0, maxValue: 100, target: nil, action: nil)
     private let sizeSlider = NSSlider(value: 1.0, minValue: 0.5, maxValue: 1.5, target: nil, action: nil)
+    private let foodSlider = NSSlider(value: 35, minValue: 0, maxValue: 100, target: nil, action: nil)
     private let statusLabel = NSTextField(labelWithString: "Drag Noodle or a toy into the chamber")
     private let closeButton = NSButton(title: "Close", target: nil, action: nil)
 
@@ -1170,11 +1266,13 @@ final class StatChangerView: NSView {
         gravityTitle.font = NSFont.systemFont(ofSize: 14, weight: .bold)
         hungerTitle.font = NSFont.systemFont(ofSize: 14, weight: .bold)
         sizeTitle.font = NSFont.systemFont(ofSize: 14, weight: .bold)
+        foodTitle.font = NSFont.systemFont(ofSize: 14, weight: .bold)
         bounceValue.alignment = .right
         gravityValue.alignment = .right
         hungerValue.alignment = .right
         sizeValue.alignment = .right
-        [bounceTitle, gravityTitle, hungerTitle, sizeTitle, bounceValue, gravityValue, hungerValue, sizeValue].forEach {
+        foodValue.alignment = .right
+        [bounceTitle, gravityTitle, hungerTitle, sizeTitle, foodTitle, bounceValue, gravityValue, hungerValue, sizeValue, foodValue].forEach {
             $0.textColor = .white.withAlphaComponent(0.92)
             addSubview($0)
         }
@@ -1195,10 +1293,15 @@ final class StatChangerView: NSView {
         sizeSlider.allowsTickMarkValuesOnly = false
         sizeSlider.target = delegate
         sizeSlider.action = #selector(AppDelegate.statSizeChanged(_:))
+        foodSlider.numberOfTickMarks = 10
+        foodSlider.allowsTickMarkValuesOnly = false
+        foodSlider.target = delegate
+        foodSlider.action = #selector(AppDelegate.statFoodChanged(_:))
         addSubview(bounceSlider)
         addSubview(gravitySlider)
         addSubview(hungerSlider)
         addSubview(sizeSlider)
+        addSubview(foodSlider)
 
         statusLabel.alignment = .center
         statusLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -1208,6 +1311,7 @@ final class StatChangerView: NSView {
         gravitySlider.isEnabled = false
         hungerSlider.isEnabled = false
         sizeSlider.isEnabled = false
+        foodSlider.isEnabled = false
 
         closeButton.target = delegate
         closeButton.action = #selector(AppDelegate.closeStatChanger(_:))
@@ -1217,11 +1321,12 @@ final class StatChangerView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func setValues(bounce: CGFloat, gravity: CGFloat, hunger: CGFloat, size: CGFloat) {
+    func setValues(bounce: CGFloat, gravity: CGFloat, hunger: CGFloat, size: CGFloat, food: CGFloat = 35) {
         bounceSlider.doubleValue = Double(bounce)
         gravitySlider.doubleValue = Double(gravity)
         hungerSlider.doubleValue = Double(hunger)
         sizeSlider.doubleValue = Double(size)
+        foodSlider.doubleValue = Double(food)
         updateLabels()
     }
 
@@ -1230,6 +1335,7 @@ final class StatChangerView: NSView {
         gravityValue.stringValue = "\(Int(round(gravitySlider.doubleValue)))"
         hungerValue.stringValue = "\(Int(round(hungerSlider.doubleValue)))%"
         sizeValue.stringValue = "\(Int(round(sizeSlider.doubleValue * 100)))%"
+        foodValue.stringValue = "\(Int(round(foodSlider.doubleValue)))"
     }
 
     func setStatus(_ text: String) {
@@ -1237,14 +1343,15 @@ final class StatChangerView: NSView {
         needsDisplay = true
     }
 
-    func setTarget(_ title: String, stats: Set<StatChangerStat>, bounce: CGFloat, gravity: CGFloat, hunger: CGFloat, size: CGFloat) {
-        setValues(bounce: bounce, gravity: gravity, hunger: hunger, size: size)
+    func setTarget(_ title: String, stats: Set<StatChangerStat>, bounce: CGFloat, gravity: CGFloat, hunger: CGFloat, size: CGFloat, food: CGFloat) {
+        setValues(bounce: bounce, gravity: gravity, hunger: hunger, size: size, food: food)
         applicableStats = stats
         let controls: [(StatChangerStat, NSControl, NSControl)] = [
             (.bounciness, bounceTitle, bounceSlider),
             (.gravity, gravityTitle, gravitySlider),
             (.hunger, hungerTitle, hungerSlider),
-            (.size, sizeTitle, sizeSlider)
+            (.size, sizeTitle, sizeSlider),
+            (.foodValue, foodTitle, foodSlider)
         ]
         for (stat, label, slider) in controls {
             let visible = stats.contains(stat)
@@ -1255,20 +1362,21 @@ final class StatChangerView: NSView {
                 StatChangerStat.bounciness: bounceValue,
                 .gravity: gravityValue,
                 .hunger: hungerValue,
-                .size: sizeValue
+                .size: sizeValue,
+                .foodValue: foodValue
             ][stat] {
                 value.isHidden = !visible
             }
         }
-        statusLabel.stringValue = "(title) is inside — adjust the available stats"
+        statusLabel.stringValue = "\(title) is inside — adjust the available stats"
         needsLayout = true
         needsDisplay = true
     }
 
     func clearTarget() {
         applicableStats.removeAll()
-        [bounceTitle, gravityTitle, hungerTitle, sizeTitle, bounceValue, gravityValue, hungerValue, sizeValue].forEach { $0.isHidden = true }
-        [bounceSlider, gravitySlider, hungerSlider, sizeSlider].forEach {
+        [bounceTitle, gravityTitle, hungerTitle, sizeTitle, foodTitle, bounceValue, gravityValue, hungerValue, sizeValue, foodValue].forEach { $0.isHidden = true }
+        [bounceSlider, gravitySlider, hungerSlider, sizeSlider, foodSlider].forEach {
             $0.isHidden = true
             $0.isEnabled = false
         }
@@ -1285,7 +1393,8 @@ final class StatChangerView: NSView {
             (.bounciness, bounceTitle, bounceValue, bounceSlider),
             (.gravity, gravityTitle, gravityValue, gravitySlider),
             (.hunger, hungerTitle, hungerValue, hungerSlider),
-            (.size, sizeTitle, sizeValue, sizeSlider)
+            (.size, sizeTitle, sizeValue, sizeSlider),
+            (.foodValue, foodTitle, foodValue, foodSlider)
         ]
         var visibleIndex = 0
         for (_, title, value, slider) in rows where !title.isHidden {
@@ -2010,7 +2119,9 @@ final class CatView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let hostWindow else { return }
-        delegate?.noodleStartedDragging()
+        if !isInLaunchBox {
+            delegate?.noodleStartedDragging()
+        }
         let point = hostWindow.convertPoint(fromScreen: NSEvent.mouseLocation)
         dragOffset = point
         mouseDownPoint = event.locationInWindow
@@ -2022,7 +2133,7 @@ final class CatView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let hostWindow else { return }
-        guard !isDead, !isInLaunchBox, delegate?.isLaunchBoxPaused != true else { return }
+        guard !isDead, isInLaunchBox || delegate?.isLaunchBoxPaused != true else { return }
         let screenPoint = NSEvent.mouseLocation
         let now = Date()
         let elapsed = max(0.001, now.timeIntervalSince(lastDragTime))
@@ -2041,7 +2152,9 @@ final class CatView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard let delegate else { return }
         if didDrag {
-            delegate.noodleFinishedDragging(velocity: dragVelocity)
+            if !isInLaunchBox {
+                delegate.noodleFinishedDragging(velocity: dragVelocity)
+            }
             return
         }
         if isInLaunchBox {
@@ -2190,6 +2303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private enum StatChangerTarget {
         case noodle
         case toy(ToyKind)
+        case popcorn
     }
 
     private var petWindow: PetWindow!
@@ -2255,6 +2369,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var toyBounciness: CGFloat = 0.78
     private var toyGravity: CGFloat = 980
     private var toySizeScale: CGFloat = 1
+    private var treatFoodValue: CGFloat = 35
+    private var goldenBoneFoodValue: CGFloat = 100
+    private var popcornFoodValue: CGFloat = 35
+    private var popcornSizeScale: CGFloat = 1
+    private var popcornInStatMachine = false
     private var toyIsThrown = false
     private var toyReturning = false
     private var toyHomeOrigin = NSPoint.zero
@@ -2300,6 +2419,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var discoOverlayWindow: NSWindow?
     private var discoOverlayView: DiscoOverlayView?
     private var discoPlayer: AVAudioPlayer?
+    private var boxSoundPlayer: AVAudioPlayer?
     private var discoEndsAt = Date.distantPast
     private var discoPhase: CGFloat = 0
     private var discoBaseOrigin = NSPoint.zero
@@ -2470,6 +2590,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func openLaunchBox() {
         guard catView.isInLaunchBox else { return }
+        boxSoundPlayer?.stop()
+        boxSoundPlayer = try? AVAudioPlayer(data: makeBoxShakeSound())
+        boxSoundPlayer?.volume = 0.72
+        boxSoundPlayer?.prepareToPlay()
+        boxSoundPlayer?.play()
         catView.isInLaunchBox = false
         UserDefaults.standard.set(true, forKey: "NoodleLaunchBoxOpened")
         noodleManuallyOffscreen = false
@@ -2904,7 +3029,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.hasShadow = false
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        window.contentView = PopcornBucketView(delegate: self)
+        let bucketView = PopcornBucketView(delegate: self)
+        bucketView.displayScale = popcornSizeScale
+        window.contentView = bucketView
         window.orderFrontRegardless()
         popcornBucketWindow = window
         controls.setStatus("Click the popcorn bucket to eat it")
@@ -2914,10 +3041,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window = popcornBucketWindow else { return }
         window.orderOut(nil)
         popcornBucketWindow = nil
+        popcornInStatMachine = false
+        giveTreat(amount: popcornFoodValue)
         catView.speechText = "Nom nom!"
         treatSpeechUntil = Date().addingTimeInterval(2)
         runTrick("Wave")
         controls.setStatus("Noodle ate the popcorn")
+    }
+
+    func popcornBucketDropped(_ window: NSWindow, velocity: NSPoint) {
+        guard popcornBucketWindow === window else { return }
+        if let statMachineWindow = statChangerWindow,
+           statMachineWindow.frame.intersects(window.frame) {
+            window.orderOut(nil)
+            popcornInStatMachine = true
+            showStatTarget(.popcorn)
+            statChangerView?.setStatus("Popcorn is inside — adjust its food value")
+            return
+        }
+        window.orderFrontRegardless()
+        controls.setStatus("Click the popcorn bucket to eat it")
     }
 
     private func cancelOtherPlayModes(except mode: String) {
@@ -2927,13 +3070,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if mode != "tag", tagRunning {
             endTagGame(message: "Tag cancelled")
         }
-        if mode != "popcorn" {
+        if mode != "popcorn" && mode != "stats" {
             cancelPopcorn()
         }
         if mode != "clone", cloneMachineWindow != nil {
             hideCloneMachine()
         }
-        if mode != "stats" && mode != "toy", statChangerWindow != nil {
+        if mode != "stats" && mode != "toy" && mode != "popcorn", statChangerWindow != nil {
             hideStatChanger()
         }
         if mode != "toy" && mode != "stats" {
@@ -2965,6 +3108,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toyBounciness = 0.78
         toyGravity = 980
         toySizeScale = 1
+        treatFoodValue = 35
+        goldenBoneFoodValue = 100
+        popcornFoodValue = 35
+        popcornSizeScale = 1
+        popcornInStatMachine = false
         toyIsThrown = false
         toyReturning = false
         toyHomeOrigin = .zero
@@ -3216,7 +3364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statMachineToy = false
 
         let screen = activeVisibleFrame()
-        let size = NSSize(width: 440, height: 400)
+        let size = NSSize(width: 440, height: 470)
         let petFrame = petWindow.frame
         let x = min(max(petFrame.maxX + 24, screen.minX + 12), screen.maxX - size.width - 12)
         let y = min(max(petFrame.minY, screen.minY + 12), screen.maxY - size.height - 12)
@@ -3249,20 +3397,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             case .robot: return "Robot"
             case .boombox: return "Boom box"
             }
+        case .popcorn: return "Popcorn"
         }
     }
 
     private func applicableStats(for target: StatChangerTarget) -> Set<StatChangerStat> {
+        var stats: Set<StatChangerStat> = [.size]
         switch target {
         case .noodle:
-            return [.bounciness, .gravity, .hunger, .size]
+            stats.formUnion([.bounciness, .gravity, .hunger])
         case .toy(let kind):
-            var stats: Set<StatChangerStat> = [.size]
             if [.treat, .goldenBone, .ball, .yarn].contains(kind) {
                 stats.insert(.bounciness)
                 stats.insert(.gravity)
             }
-            return stats
+            if [.treat, .goldenBone].contains(kind) {
+                stats.insert(.foodValue)
+            }
+        case .popcorn:
+            stats.insert(.foodValue)
+        }
+        return stats
+    }
+
+    private func foodValue(for kind: ToyKind) -> CGFloat {
+        switch kind {
+        case .treat: return treatFoodValue
+        case .goldenBone: return goldenBoneFoodValue
+        default: return 0
         }
     }
 
@@ -3275,9 +3437,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let view = statChangerView else { return }
         switch target {
         case .noodle:
-            view.setTarget("Noodle", stats: applicableStats(for: target), bounce: noodleBounciness, gravity: noodleGravity, hunger: noodleHunger, size: noodleSizeScale)
+            view.setTarget("Noodle", stats: applicableStats(for: target), bounce: noodleBounciness, gravity: noodleGravity, hunger: noodleHunger, size: noodleSizeScale, food: 0)
         case .toy:
-            view.setTarget(statTargetName(target), stats: applicableStats(for: target), bounce: toyBounciness, gravity: toyGravity, hunger: noodleHunger, size: toySizeScale)
+            let food: CGFloat
+            if case .toy(let kind) = target {
+                food = foodValue(for: kind)
+            } else {
+                food = 0
+            }
+            view.setTarget(statTargetName(target), stats: applicableStats(for: target), bounce: toyBounciness, gravity: toyGravity, hunger: noodleHunger, size: toySizeScale, food: food)
+        case .popcorn:
+            view.setTarget("Popcorn", stats: applicableStats(for: target), bounce: 0, gravity: 0, hunger: noodleHunger, size: popcornSizeScale, food: popcornFoodValue)
         }
         controls.setStatus("\(statTargetName(target)) is in the stat changer")
     }
@@ -3288,6 +3458,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             noodleBounciness = CGFloat(sender.doubleValue)
         case .toy:
             toyBounciness = CGFloat(sender.doubleValue)
+        case .popcorn:
+            return
         case nil:
             return
         }
@@ -3301,6 +3473,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             noodleGravity = CGFloat(sender.doubleValue)
         case .toy:
             toyGravity = CGFloat(sender.doubleValue)
+        case .popcorn:
+            return
         case nil:
             return
         }
@@ -3329,11 +3503,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case .toy:
             toySizeScale = CGFloat(sender.doubleValue)
             (toyWindow?.contentView as? ToyView)?.displayScale = toySizeScale
+        case .popcorn:
+            popcornSizeScale = CGFloat(sender.doubleValue)
+            (popcornBucketWindow?.contentView as? PopcornBucketView)?.displayScale = popcornSizeScale
         case nil:
             return
         }
         statChangerView?.updateLabels()
         controls.setStatus("\(statChangerTarget.map(statTargetName) ?? "Object") size: \(Int(round(sender.doubleValue * 100)))%")
+    }
+
+    @objc func statFoodChanged(_ sender: NSSlider) {
+        let value = CGFloat(sender.doubleValue)
+        switch statChangerTarget {
+        case .toy(let kind):
+            switch kind {
+            case .treat: treatFoodValue = value
+            case .goldenBone: goldenBoneFoodValue = value
+            default: return
+            }
+        case .popcorn:
+            popcornFoodValue = value
+        case .noodle, nil:
+            return
+        }
+        statChangerView?.updateLabels()
+        controls.setStatus("\(statChangerTarget.map(statTargetName) ?? "Food") restores: \(Int(round(value))) hunger")
     }
 
     @objc func closeStatChanger(_ sender: Any?) {
@@ -3344,6 +3539,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if statMachineToy {
             toyWindow?.orderFrontRegardless()
         }
+        if popcornInStatMachine {
+            popcornBucketWindow?.orderFrontRegardless()
+        }
         statChangerWindow?.orderOut(nil)
         statChangerWindow = nil
         statChangerView = nil
@@ -3351,6 +3549,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statMachineHasNoodle = false
         statChangerTarget = nil
         statMachineToy = false
+        popcornInStatMachine = false
         moving = true
         chooseNewTarget()
         restorePetsToDesktop()
@@ -4485,9 +4684,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         spawnToy(kind: .treat, status: "Treat ready — drag and toss it to Noodle")
     }
 
-    private func giveTreat(amount: CGFloat = 35) {
+    private func giveTreat(amount: CGFloat? = nil) {
         guard !noodleIsDead else { return }
-        noodleHunger = min(100, noodleHunger + amount)
+        noodleHunger = min(100, noodleHunger + (amount ?? treatFoodValue))
         lastHungerUpdate = Date()
         feedTreatsUntil = Date().addingTimeInterval(2)
         catView.showTreats = true
@@ -4499,7 +4698,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func feedGoldenBone() {
         guard !noodleIsDead else { return }
         goldenBoneFed = true
-        noodleHunger = 100
+        noodleHunger = min(100, noodleHunger + goldenBoneFoodValue)
         lastHungerUpdate = Date()
         feedTreatsUntil = Date().addingTimeInterval(2)
         catView.hunger = noodleHunger
@@ -4529,14 +4728,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if statChangerWindow != nil {
             hideStatChanger()
         }
+        tutorialNarrationTimer?.invalidate()
+        tutorialNarrationTimer = nil
+        tutorialWindow?.orderOut(nil)
+        tutorialWindow = nil
+        toyPanelWindow?.orderOut(nil)
+        toyPanelWindow = nil
+        wallOverlayWindow?.orderOut(nil)
+        wallOverlayWindow = nil
+        wallOverlayView = nil
         machineTreatReady = false
         statMachineHasNoodle = false
+        statChangerTarget = nil
+        statMachineToy = false
         if tagRunning {
             endTagGame(message: "Tag reset")
         }
         moving = false
         noodleVelocity = .zero
         noodleIsBouncing = false
+        noodleBounciness = 0.78
+        noodleGravity = 980
+        noodleSizeScale = 1
         noodleHunger = 100
         lastHungerUpdate = Date()
         feedTreatsUntil = Date.distantPast
@@ -4552,17 +4765,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         resetBoxDropping = false
         backspacePresses.removeAll()
         activeTrick = ""
+        greetingUntil = Date.distantPast
         catView.trick = ""
         catView.isDead = false
         catView.hungerLocked = false
+        catView.hunger = noodleHunger
         catView.isCaged = false
         catView.showTreats = false
         catView.speechText = ""
+        importedImage = nil
+        currentCosmetic = "None"
+        catView.avatarImage = nil
+        catView.cosmetic = currentCosmetic
+        controls.setPhoto(nil)
         toyWindow?.orderOut(nil)
         toyWindow = nil
         fetchingToy = false
         toyTarget = .zero
         toyVelocity = .zero
+        toyBounciness = 0.78
+        toyGravity = 980
+        toySizeScale = 1
+        treatFoodValue = 35
+        goldenBoneFoodValue = 100
+        popcornFoodValue = 35
+        popcornSizeScale = 1
+        popcornInStatMachine = false
         toyIsThrown = false
         toyReturning = false
         toyHomeOrigin = .zero
@@ -4605,10 +4833,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mazeBuilderAccepted = false
         mazeRunning = false
         catView.displayScale = noodleSizeScale
+        savedNoodleOrigin = .zero
         restingUntil = Date.distantPast
         nextWindowRestAt = Date().addingTimeInterval(20)
         catView.isInLaunchBox = false
         openingGreetingActive = false
+        UserDefaults.standard.set(false, forKey: "NoodleLaunchBoxOpened")
         noodleManuallyOffscreen = true
         resetBoxDropAt = Date().addingTimeInterval(5)
         catView.setWalking(false)
