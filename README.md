@@ -155,7 +155,7 @@ Choose **Teach a trick** to give Noodle a custom trick name. He performs it with
 - **Set trap** creates a harmless trap. Drag it into place; when Noodle walks into it, it holds him for about three seconds and then releases him.
 - **Fetch ball** creates a ball Noodle chases and brings back.
 - **Toss yarn** creates yarn Noodle chases and returns.
-- **Spawn robot** creates a robot. Click it and use W/A/S/D, or let it move automatically.
+- **Spawn robot** creates a robot. Click it and use W/A/S/D, or let it move automatically. Noodle follows the robot around.
 - **Spawn boom box** creates a boom box. Click it to make Noodle and clones dance.
 
 Only one toy is active at a time. Drag a toy and release it to throw or place it.
