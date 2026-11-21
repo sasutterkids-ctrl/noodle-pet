@@ -1444,6 +1444,7 @@ final class ClonePet {
         view.hostWindow = window
         view.delegate = delegate
         view.avatarImage = avatarImage
+        view.cosmetic = delegate.currentCosmetic
         view.menu = delegate.makePetMenu()
         window.contentView = view
         window.orderFrontRegardless()
@@ -1489,6 +1490,7 @@ final class ClonePet {
         }
         view.setWalking(leaderView.isWalking || distance > 16)
         view.trick = dancing ? "Dance" : leaderView.trick
+        view.cosmetic = leaderView.cosmetic
         view.animationTime = leaderView.animationTime
         view.needsDisplay = true
     }
@@ -1505,6 +1507,7 @@ final class CatView: NSView {
     weak var hostWindow: NSWindow?
     weak var delegate: AppDelegate?
     var avatarImage: NSImage? { didSet { needsDisplay = true } }
+    var cosmetic = "None" { didSet { needsDisplay = true } }
     var isWalking = true
     var isCaged = false { didSet { needsDisplay = true } }
     var speechText = "" {
@@ -1759,6 +1762,72 @@ final class CatView: NSView {
         // Whiskers.
         for y in [-4.0, 5.0, 14.0] {
             let whisker = NSBezierPath(); whisker.move(to: NSPoint(x: head.minX + 42, y: head.midY + y)); whisker.line(to: NSPoint(x: head.minX + 3, y: head.midY + y + (y / 3))); whisker.move(to: NSPoint(x: head.maxX - 42, y: head.midY + y)); whisker.line(to: NSPoint(x: head.maxX - 3, y: head.midY + y + (y / 3))); whisker.lineWidth = 1.5; whisker.stroke()
+        }
+
+        // Wearable cosmetics are drawn last so they sit on top of the face and body.
+        let cosmeticName = cosmetic.lowercased()
+        if cosmeticName == "crown" {
+            let crown = NSBezierPath()
+            crown.move(to: NSPoint(x: head.minX + 13, y: head.maxY + 2))
+            crown.line(to: NSPoint(x: head.minX + 20, y: head.maxY + 29))
+            crown.line(to: NSPoint(x: head.midX - 7, y: head.maxY + 14))
+            crown.line(to: NSPoint(x: head.midX, y: head.maxY + 34))
+            crown.line(to: NSPoint(x: head.midX + 8, y: head.maxY + 14))
+            crown.line(to: NSPoint(x: head.maxX - 20, y: head.maxY + 29))
+            crown.line(to: NSPoint(x: head.maxX - 13, y: head.maxY + 2))
+            crown.close()
+            NSColor(calibratedRed: 1.0, green: 0.76, blue: 0.12, alpha: 1).setFill()
+            crown.fill()
+            NSColor(calibratedRed: 0.72, green: 0.36, blue: 0.06, alpha: 1).setStroke()
+            crown.lineWidth = 2
+            crown.stroke()
+            NSColor.systemRed.setFill()
+            NSBezierPath(ovalIn: NSRect(x: head.midX - 4, y: head.maxY + 7, width: 8, height: 8)).fill()
+        } else if cosmeticName == "party hat" {
+            let hat = NSBezierPath()
+            hat.move(to: NSPoint(x: head.midX - 27, y: head.maxY + 2))
+            hat.line(to: NSPoint(x: head.midX + 23, y: head.maxY + 2))
+            hat.line(to: NSPoint(x: head.midX + 4, y: head.maxY + 43))
+            hat.close()
+            NSColor(calibratedRed: 0.55, green: 0.28, blue: 0.92, alpha: 1).setFill()
+            hat.fill()
+            NSColor.systemYellow.setFill()
+            NSBezierPath(ovalIn: NSRect(x: head.midX - 12, y: head.maxY + 13, width: 7, height: 7)).fill()
+            NSBezierPath(ovalIn: NSRect(x: head.midX + 3, y: head.maxY + 24, width: 7, height: 7)).fill()
+            NSColor.white.setStroke()
+            let hatBand = NSBezierPath(); hatBand.move(to: NSPoint(x: head.midX - 24, y: head.maxY + 8)); hatBand.line(to: NSPoint(x: head.midX + 17, y: head.maxY + 8)); hatBand.lineWidth = 4; hatBand.stroke()
+            NSColor.systemYellow.setFill()
+            NSBezierPath(ovalIn: NSRect(x: head.midX - 1, y: head.maxY + 39, width: 10, height: 10)).fill()
+        } else if cosmeticName == "sunglasses" {
+            NSColor(calibratedWhite: 0.06, alpha: 0.96).setFill()
+            let leftLens = NSBezierPath(roundedRect: NSRect(x: head.midX - 38, y: eyeY - 9, width: 30, height: 20), xRadius: 6, yRadius: 6)
+            let rightLens = NSBezierPath(roundedRect: NSRect(x: head.midX + 8, y: eyeY - 9, width: 30, height: 20), xRadius: 6, yRadius: 6)
+            leftLens.fill(); rightLens.fill()
+            NSColor(calibratedRed: 0.20, green: 0.74, blue: 0.92, alpha: 0.7).setFill()
+            NSBezierPath(roundedRect: NSRect(x: head.midX - 34, y: eyeY - 5, width: 13, height: 5), xRadius: 2, yRadius: 2).fill()
+            NSBezierPath(roundedRect: NSRect(x: head.midX + 12, y: eyeY - 5, width: 13, height: 5), xRadius: 2, yRadius: 2).fill()
+            NSColor.black.setStroke()
+            let bridge = NSBezierPath(); bridge.move(to: NSPoint(x: head.midX - 8, y: eyeY + 1)); bridge.line(to: NSPoint(x: head.midX + 8, y: eyeY + 1)); bridge.lineWidth = 4; bridge.stroke()
+        } else if cosmeticName == "bow tie" {
+            let y = body.maxY - 7
+            NSColor(calibratedRed: 0.83, green: 0.10, blue: 0.20, alpha: 1).setFill()
+            let leftBow = NSBezierPath(); leftBow.move(to: NSPoint(x: body.midX - 5, y: y)); leftBow.line(to: NSPoint(x: body.midX - 30, y: y + 15)); leftBow.line(to: NSPoint(x: body.midX - 27, y: y - 13)); leftBow.close(); leftBow.fill()
+            let rightBow = NSBezierPath(); rightBow.move(to: NSPoint(x: body.midX + 5, y: y)); rightBow.line(to: NSPoint(x: body.midX + 30, y: y + 15)); rightBow.line(to: NSPoint(x: body.midX + 27, y: y - 13)); rightBow.close(); rightBow.fill()
+            NSColor.systemYellow.setFill()
+            NSBezierPath(ovalIn: NSRect(x: body.midX - 7, y: y - 7, width: 14, height: 14)).fill()
+        } else if cosmeticName == "flower collar" {
+            NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.86, alpha: 1).setStroke()
+            let collar = NSBezierPath()
+            collar.move(to: NSPoint(x: body.minX + 17, y: body.maxY - 10))
+            collar.curve(to: NSPoint(x: body.maxX - 17, y: body.maxY - 10), controlPoint1: NSPoint(x: body.midX - 34, y: body.maxY - 24), controlPoint2: NSPoint(x: body.midX + 34, y: body.maxY - 24))
+            collar.lineWidth = 7
+            collar.stroke()
+            NSColor.systemPink.setFill()
+            for (dx, dy) in [(0.0, 0.0), (-9.0, 0.0), (9.0, 0.0), (0.0, 9.0), (0.0, -9.0)] {
+                NSBezierPath(ovalIn: NSRect(x: body.midX + dx - 5, y: body.minY + 5 + dy - 5, width: 10, height: 10)).fill()
+            }
+            NSColor.systemYellow.setFill()
+            NSBezierPath(ovalIn: NSRect(x: body.midX - 4, y: body.minY + 1, width: 8, height: 8)).fill()
         }
 
         // Trick poses.
@@ -2115,6 +2184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var activeTrick = ""
     private var trickEndsAt = Date.distantPast
     private var importedImage: NSImage?
+    private(set) var currentCosmetic = "None"
     private var restingUntil = Date.distantPast
     private var nextWindowRestAt = Date.distantPast
     private var followingMouse = false
@@ -2207,6 +2277,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let avatarMenu = NSMenu()
         add("Import pet photo", #selector(importPhoto(_:)), to: avatarMenu)
         add("Style as Noodle", #selector(stylePhoto(_:)), to: avatarMenu)
+        let cosmeticsMenu = NSMenu()
+        for name in ["None", "Crown", "Party hat", "Sunglasses", "Bow tie", "Flower collar"] {
+            let item = cosmeticsMenu.addItem(withTitle: name == currentCosmetic ? "✓ (name)" : name, action: #selector(setCosmetic(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = name
+        }
+        let cosmeticsItem = NSMenuItem(title: "Cosmetics", action: nil, keyEquivalent: "")
+        cosmeticsItem.submenu = cosmeticsMenu
+        avatarMenu.addItem(cosmeticsItem)
         let avatarItem = NSMenuItem(title: "Avatar", action: nil, keyEquivalent: "")
         avatarItem.submenu = avatarMenu
         menu.addItem(avatarItem)
@@ -3832,11 +3911,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             noodleHunger = 100
         } else {
             let trick = catView.trick.lowercased()
-            var hungerRate: CGFloat = 0.08
-            if noodleIsBouncing { hungerRate += 0.32 }
-            if trick.contains("dance") { hungerRate += 0.28 }
+            var hungerRate: CGFloat = 0.012
+            if noodleIsBouncing { hungerRate += 0.08 }
+            if trick.contains("dance") { hungerRate += 0.07 }
             if trick.contains("jump") || trick.contains("zoom") || trick.contains("spin") || trick.contains("roll") {
-                hungerRate += 0.18
+                hungerRate += 0.05
             }
             noodleHunger = max(0, noodleHunger - CGFloat(hungerElapsed) * hungerRate)
         }
@@ -4461,6 +4540,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         catView.trick = name
         trickEndsAt = Date().addingTimeInterval(3.0)
         controls.setStatus("Noodle is doing: \(name)")
+    }
+
+    @objc func setCosmetic(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let name = item.representedObject as? String else { return }
+        currentCosmetic = name
+        catView.cosmetic = name
+        for clone in clonePets {
+            clone.view.cosmetic = name
+        }
+        controls.setStatus(name == "None" ? "Noodle's cosmetics are cleared" : "Noodle is wearing: \(name)")
     }
 
     @objc func importPhoto(_ sender: Any?) {
