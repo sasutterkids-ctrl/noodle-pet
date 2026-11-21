@@ -174,14 +174,14 @@ Use the Terminate chamber to remove a clone. Close the machine with its Close bu
 ## Stat changer
 
 1. Open **Play → Stat changer machine**.
-2. Spawn a treat and drag it into the machine.
-3. Drag Noodle into the chamber.
-4. Adjust the live sliders:
-   - **Bounciness** changes bounce strength for Noodle and thrown physics toys.
-   - **Gravity** changes the pull on Noodle and thrown physics toys.
-   - **Hunger level** sets hunger from 0% to 100%.
-   - **Size** changes Noodle from 50% to 150%.
-5. Click Close when finished.
+2. Drag Noodle or a toy into the chamber. A treat is not required.
+3. The machine shows only the stats that apply to the object:
+   - **Bounciness** changes bounce strength for Noodle and throwable physics toys.
+   - **Gravity** changes the pull on Noodle and throwable physics toys.
+   - **Hunger level** appears for Noodle only and sets hunger from 0% to 100%.
+   - **Size** changes the size of Noodle or the selected toy.
+4. Adjust the visible sliders live.
+5. Click Close when finished. The toy returns to the desktop with its new settings.
 
 ## Movement
 
