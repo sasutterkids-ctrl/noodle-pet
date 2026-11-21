@@ -98,7 +98,7 @@ Dragging Noodle moves him. Releasing him after a drag makes him bounce like a te
 - **Send Noodle to cage** / **Let Noodle out** controls the cage.
 - **Reset Noodle** restores Noodle, clears toys and machines, resets hunger, and drops the box after five seconds.
 
-Noodle’s Hunger bar is visible below him. Active tricks, dancing, jumping, spinning, rolling, and bouncing use hunger. If hunger reaches 0, Noodle dies. Use Reset Noodle to revive him.
+Noodle’s Hunger bar is visible below him. Hunger drains very slowly during normal wandering; active tricks, dancing, jumping, spinning, rolling, and bouncing use extra hunger. If hunger reaches 0, Noodle dies. Use Reset Noodle to revive him.
 
 During active play, Noodle has a chance to throw up a golden bone. Drag the golden bone to him and feed it to unlock `Hunger ∞`; hunger then stays full until Reset Noodle is used.
 
@@ -111,6 +111,19 @@ During active play, Noodle has a chance to throw up a golden bone. Drag the gold
 5. Open **Avatar → Style as Noodle** to apply the warm, sharpened cartoon-like styling pass.
 
 The styling pass is local. It does not require an API key or upload the photo to a service.
+
+## Cosmetics
+
+Open **Avatar → Cosmetics** to change Noodle’s look. Choose:
+
+- None
+- Crown
+- Party hat
+- Sunglasses
+- Bow tie
+- Flower collar
+
+Cosmetics are drawn locally and can be changed whenever you want. Clones receive the same cosmetic look.
 
 ## Tricks
 
