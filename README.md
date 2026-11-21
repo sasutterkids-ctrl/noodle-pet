@@ -4,11 +4,55 @@ Noodle is a native macOS desktop pet. He lives above your other windows, reacts 
 
 ## Requirements
 
-- macOS
+- macOS 13 or newer
 - Swift 5.9 or newer
 - A Mac that can build Swift AppKit applications
+- An Apple-silicon Mac for the current build script
 
 Noodle does not request Accessibility permission when he starts. The optional window-control actions ask only if you choose to use them.
+
+## Installation
+
+Noodle is currently installed by building the app from this repository. There is not a pre-built installer or signed `.dmg` yet.
+
+### Option 1: Download the ZIP
+
+1. Open the [Noodle GitHub repository](https://github.com/sasutterkids-ctrl/noodle-pet).
+2. Click the green **Code** button.
+3. Click **Download ZIP**.
+4. Open the downloaded ZIP in Finder. macOS creates a `noodle-pet-main` folder.
+5. Open **Terminal**. Type `cd ` with a space after it, drag the `noodle-pet-main` folder into the Terminal window, and press Return.
+6. Build and open Noodle:
+
+   ```sh
+   zsh run-noodle.command
+   ```
+
+### Option 2: Clone with Git
+
+If Git is installed, open Terminal and run:
+
+```sh
+git clone https://github.com/sasutterkids-ctrl/noodle-pet.git
+cd noodle-pet
+zsh run-noodle.command
+```
+
+The first run downloads/builds the Swift target locally, creates `Noodle.app`, and opens it. You only need to run the command again when you want to rebuild after updating the source.
+
+### Install the Swift tools if needed
+
+If Terminal says that `swift` or `git` cannot be found, install Apple’s Command Line Tools:
+
+```sh
+xcode-select --install
+```
+
+Finish the installer, close and reopen Terminal, then run `zsh run-noodle.command` again. You can check Swift with:
+
+```sh
+swift --version
+```
 
 ## Build and launch
 
@@ -26,6 +70,14 @@ open Noodle.app
 ```
 
 The script creates `Noodle.app` from the Swift source and the resources in `AppBundle/Contents/Resources`.
+
+### If macOS blocks the app
+
+The app is a local development build and is not notarized. If macOS says that it cannot verify the developer, close the warning, open **System Settings → Privacy & Security**, and choose **Open Anyway** for Noodle. Only do this when you downloaded the source from the repository you trust. Then run `open Noodle.app` again from the project folder.
+
+### Uninstall
+
+Quit Noodle from his menu, then delete the project folder. Noodle also stores a small amount of local state in macOS preferences so first-launch and reset behavior can persist; deleting the project does not remove that preference. To start fresh, use **Care → Reset Noodle** inside the app.
 
 ## First launch
 
