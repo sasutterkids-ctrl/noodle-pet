@@ -83,7 +83,9 @@ Quit Noodle from his menu, then delete the project folder. Noodle also stores a 
 
 On the first launch only, Noodle goes off-screen for five seconds. A cardboard box drops down from the top of the screen. Click the box to open it. There is no speech bubble while Noodle is inside the box.
 
-After opening the box, Noodle explains the basics with four speech bubbles. Later launches open normally. **Care → Reset Noodle** repeats the off-screen and box-drop sequence.
+After opening the box, Noodle explains the basics with four speech bubbles. Later launches open normally. **Care → Reset Noodle** performs a full reset: it clears toys, clones, machines, maze walls, hunger, death, tricks, movement modes, imported photos, cosmetics, and changed stats, then repeats the off-screen and box-drop sequence.
+
+While the box is closed, drag it to move it around. A click without dragging opens it.
 
 ## Open Noodle’s menu
 
@@ -179,7 +181,8 @@ Use the Terminate chamber to remove a clone. Close the machine with its Close bu
    - **Bounciness** changes bounce strength for Noodle and throwable physics toys.
    - **Gravity** changes the pull on Noodle and throwable physics toys.
    - **Hunger level** appears for Noodle only and sets hunger from 0% to 100%.
-   - **Size** changes the size of Noodle or the selected toy.
+   - **Size** appears for every object and changes the size of Noodle, toys, or popcorn.
+   - **Food value** appears for treats, golden bones, and popcorn. It controls how much hunger that food restores. Golden bones still unlock endless hunger.
 4. Adjust the visible sliders live.
 5. Click Close when finished. The toy returns to the desktop with its new settings.
 
