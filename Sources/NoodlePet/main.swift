@@ -698,9 +698,17 @@ enum ToyKind: Hashable {
     case boombox
 }
 
+enum StatChangerStat: Hashable {
+    case bounciness
+    case gravity
+    case hunger
+    case size
+}
+
 final class ToyView: NSView {
     weak var delegate: AppDelegate?
     let kind: ToyKind
+    var displayScale: CGFloat = 1 { didSet { needsDisplay = true } }
     private var dragOffset = NSPoint.zero
     private var lastMousePoint = NSPoint.zero
     private var lastDragTime = Date()
@@ -718,6 +726,14 @@ final class ToyView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        NSGraphicsContext.saveGraphicsState()
+        if displayScale != 1 {
+            let transform = NSAffineTransform()
+            transform.translateX(by: bounds.midX, yBy: bounds.midY)
+            transform.scale(by: displayScale)
+            transform.translateX(by: -bounds.midX, yBy: -bounds.midY)
+            transform.concat()
+        }
         NSColor.black.withAlphaComponent(0.14).setFill()
         NSBezierPath(ovalIn: NSRect(x: 9, y: 7, width: 38, height: 10)).fill()
         switch kind {
@@ -816,6 +832,7 @@ final class ToyView: NSView {
             "♪".draw(at: NSPoint(x: 5, y: 45), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 15), .foregroundColor: NSColor.white])
             "♫".draw(at: NSPoint(x: 42, y: 44), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 14), .foregroundColor: NSColor.white])
         }
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -1128,6 +1145,7 @@ final class CloneMachineView: NSView {
 
 final class StatChangerView: NSView {
     weak var delegate: AppDelegate?
+    private var applicableStats = Set<StatChangerStat>()
     private let bounceTitle = NSTextField(labelWithString: "Bounciness")
     private let gravityTitle = NSTextField(labelWithString: "Gravity")
     private let hungerTitle = NSTextField(labelWithString: "Hunger level")
@@ -1140,7 +1158,7 @@ final class StatChangerView: NSView {
     private let gravitySlider = NSSlider(value: 980, minValue: 0, maxValue: 1800, target: nil, action: nil)
     private let hungerSlider = NSSlider(value: 100, minValue: 0, maxValue: 100, target: nil, action: nil)
     private let sizeSlider = NSSlider(value: 1.0, minValue: 0.5, maxValue: 1.5, target: nil, action: nil)
-    private let statusLabel = NSTextField(labelWithString: "Feed Noodle a treat, then drag him into the chamber")
+    private let statusLabel = NSTextField(labelWithString: "Drag Noodle or a toy into the chamber")
     private let closeButton = NSButton(title: "Close", target: nil, action: nil)
 
     init(delegate: AppDelegate) {
@@ -1219,12 +1237,43 @@ final class StatChangerView: NSView {
         needsDisplay = true
     }
 
-    func setNoodleInside(_ inside: Bool) {
-        bounceSlider.isEnabled = inside
-        gravitySlider.isEnabled = inside
-        hungerSlider.isEnabled = inside
-        sizeSlider.isEnabled = inside
-        statusLabel.stringValue = inside ? "Noodle is inside — adjust his stats" : "Feed Noodle a treat, then drag him into the chamber"
+    func setTarget(_ title: String, stats: Set<StatChangerStat>, bounce: CGFloat, gravity: CGFloat, hunger: CGFloat, size: CGFloat) {
+        setValues(bounce: bounce, gravity: gravity, hunger: hunger, size: size)
+        applicableStats = stats
+        let controls: [(StatChangerStat, NSControl, NSControl)] = [
+            (.bounciness, bounceTitle, bounceSlider),
+            (.gravity, gravityTitle, gravitySlider),
+            (.hunger, hungerTitle, hungerSlider),
+            (.size, sizeTitle, sizeSlider)
+        ]
+        for (stat, label, slider) in controls {
+            let visible = stats.contains(stat)
+            label.isHidden = !visible
+            slider.isHidden = !visible
+            slider.isEnabled = visible
+            if let value = [
+                StatChangerStat.bounciness: bounceValue,
+                .gravity: gravityValue,
+                .hunger: hungerValue,
+                .size: sizeValue
+            ][stat] {
+                value.isHidden = !visible
+            }
+        }
+        statusLabel.stringValue = "(title) is inside — adjust the available stats"
+        needsLayout = true
+        needsDisplay = true
+    }
+
+    func clearTarget() {
+        applicableStats.removeAll()
+        [bounceTitle, gravityTitle, hungerTitle, sizeTitle, bounceValue, gravityValue, hungerValue, sizeValue].forEach { $0.isHidden = true }
+        [bounceSlider, gravitySlider, hungerSlider, sizeSlider].forEach {
+            $0.isHidden = true
+            $0.isEnabled = false
+        }
+        statusLabel.stringValue = "Drag Noodle or a toy into the chamber"
+        needsLayout = true
         needsDisplay = true
     }
 
@@ -1232,18 +1281,20 @@ final class StatChangerView: NSView {
         super.layout()
         let controlX: CGFloat = 154
         let controlWidth = bounds.width - controlX - 28
-        bounceTitle.frame = NSRect(x: controlX, y: bounds.height - 72, width: 130, height: 22)
-        bounceValue.frame = NSRect(x: bounds.width - 78, y: bounds.height - 72, width: 50, height: 22)
-        bounceSlider.frame = NSRect(x: controlX, y: bounds.height - 106, width: controlWidth, height: 24)
-        gravityTitle.frame = NSRect(x: controlX, y: bounds.height - 146, width: 130, height: 22)
-        gravityValue.frame = NSRect(x: bounds.width - 78, y: bounds.height - 146, width: 50, height: 22)
-        gravitySlider.frame = NSRect(x: controlX, y: bounds.height - 180, width: controlWidth, height: 24)
-        hungerTitle.frame = NSRect(x: controlX, y: bounds.height - 220, width: 130, height: 22)
-        hungerValue.frame = NSRect(x: bounds.width - 78, y: bounds.height - 220, width: 50, height: 22)
-        hungerSlider.frame = NSRect(x: controlX, y: bounds.height - 254, width: controlWidth, height: 24)
-        sizeTitle.frame = NSRect(x: controlX, y: bounds.height - 294, width: 130, height: 22)
-        sizeValue.frame = NSRect(x: bounds.width - 78, y: bounds.height - 294, width: 50, height: 22)
-        sizeSlider.frame = NSRect(x: controlX, y: bounds.height - 328, width: controlWidth, height: 24)
+        let rows: [(StatChangerStat, NSTextField, NSTextField, NSSlider)] = [
+            (.bounciness, bounceTitle, bounceValue, bounceSlider),
+            (.gravity, gravityTitle, gravityValue, gravitySlider),
+            (.hunger, hungerTitle, hungerValue, hungerSlider),
+            (.size, sizeTitle, sizeValue, sizeSlider)
+        ]
+        var visibleIndex = 0
+        for (_, title, value, slider) in rows where !title.isHidden {
+            let top = bounds.height - 72 - CGFloat(visibleIndex) * 74
+            title.frame = NSRect(x: controlX, y: top, width: 130, height: 22)
+            value.frame = NSRect(x: bounds.width - 78, y: top, width: 50, height: 22)
+            slider.frame = NSRect(x: controlX, y: top - 34, width: controlWidth, height: 24)
+            visibleIndex += 1
+        }
         statusLabel.frame = NSRect(x: 20, y: 48, width: bounds.width - 40, height: 20)
         closeButton.frame = NSRect(x: bounds.width - 100, y: 38, width: 72, height: 30)
     }
@@ -1292,7 +1343,7 @@ final class TutorialView: NSView {
         • Boom box: click it to make Noodle and clones dance.
 
         Machines:
-        Put a treat inside first, then drag Noodle into the chamber. The Clone Machine creates clones, and the Stat Changer unlocks bounciness and gravity controls.
+        Put a treat inside the Clone Machine first, then drag Noodle into its chamber. The Stat Changer accepts Noodle or a toy directly and only shows stats that apply to that object.
 
         Disco mode plays your dance music with lights, fog, sparks, jumps, and effects. Spin until stopped is a persistent trick you can turn off from the Play menu.
 
@@ -2136,6 +2187,11 @@ final class ControlView: NSView {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private enum StatChangerTarget {
+        case noodle
+        case toy(ToyKind)
+    }
+
     private var petWindow: PetWindow!
     private var catView: CatView!
     private var controls: ControlView!
@@ -2149,6 +2205,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var tutorialNarrationIndex = 0
     private var machineTreatReady = false
     private var statMachineHasNoodle = false
+    private var statChangerTarget: StatChangerTarget?
+    private var statMachineToy = false
     private var clonePets: [ClonePet] = []
     private var cloneCount = 1
     private var cloneInProgress = false
@@ -2194,6 +2252,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var fetchingToy = false
     private var toyTarget = NSPoint.zero
     private var toyVelocity = NSPoint.zero
+    private var toyBounciness: CGFloat = 0.78
+    private var toyGravity: CGFloat = 980
+    private var toySizeScale: CGFloat = 1
     private var toyIsThrown = false
     private var toyReturning = false
     private var toyHomeOrigin = NSPoint.zero
@@ -2872,10 +2933,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if mode != "clone", cloneMachineWindow != nil {
             hideCloneMachine()
         }
-        if mode != "stats", statChangerWindow != nil {
+        if mode != "stats" && mode != "toy", statChangerWindow != nil {
             hideStatChanger()
         }
-        if mode != "toy" {
+        if mode != "toy" && mode != "stats" {
             cancelToyPlay()
         }
     }
@@ -2901,6 +2962,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fetchingToy = false
         toyTarget = .zero
         toyVelocity = .zero
+        toyBounciness = 0.78
+        toyGravity = 980
+        toySizeScale = 1
         toyIsThrown = false
         toyReturning = false
         toyHomeOrigin = .zero
@@ -3148,6 +3212,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         cancelOtherPlayModes(except: "stats")
         machineTreatReady = false
         statMachineHasNoodle = false
+        statChangerTarget = nil
+        statMachineToy = false
 
         let screen = activeVisibleFrame()
         let size = NSSize(width: 440, height: 400)
@@ -3162,27 +3228,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.delegate = self
 
         let view = StatChangerView(delegate: self)
-        view.setValues(bounce: noodleBounciness, gravity: noodleGravity, hunger: noodleHunger, size: noodleSizeScale)
+        view.clearTarget()
         window.contentView = view
         statChangerWindow = window
         statChangerView = view
         window.orderFrontRegardless()
-        controls.setStatus("Stat changer ready — changes apply to everything live")
+        controls.setStatus("Stat changer ready — drag Noodle or a toy into the chamber")
+    }
+
+    private func statTargetName(_ target: StatChangerTarget) -> String {
+        switch target {
+        case .noodle: return "Noodle"
+        case .toy(let kind):
+            switch kind {
+            case .treat: return "Treat"
+            case .goldenBone: return "Golden bone"
+            case .trap: return "Trap"
+            case .ball: return "Ball"
+            case .yarn: return "Yarn"
+            case .robot: return "Robot"
+            case .boombox: return "Boom box"
+            }
+        }
+    }
+
+    private func applicableStats(for target: StatChangerTarget) -> Set<StatChangerStat> {
+        switch target {
+        case .noodle:
+            return [.bounciness, .gravity, .hunger, .size]
+        case .toy(let kind):
+            var stats: Set<StatChangerStat> = [.size]
+            if [.treat, .goldenBone, .ball, .yarn].contains(kind) {
+                stats.insert(.bounciness)
+                stats.insert(.gravity)
+            }
+            return stats
+        }
+    }
+
+    private func showStatTarget(_ target: StatChangerTarget) {
+        statChangerTarget = target
+        statMachineToy = {
+            if case .toy = target { return true }
+            return false
+        }()
+        guard let view = statChangerView else { return }
+        switch target {
+        case .noodle:
+            view.setTarget("Noodle", stats: applicableStats(for: target), bounce: noodleBounciness, gravity: noodleGravity, hunger: noodleHunger, size: noodleSizeScale)
+        case .toy:
+            view.setTarget(statTargetName(target), stats: applicableStats(for: target), bounce: toyBounciness, gravity: toyGravity, hunger: noodleHunger, size: toySizeScale)
+        }
+        controls.setStatus("\(statTargetName(target)) is in the stat changer")
     }
 
     @objc func statBounceChanged(_ sender: NSSlider) {
-        noodleBounciness = CGFloat(sender.doubleValue)
+        switch statChangerTarget {
+        case .noodle:
+            noodleBounciness = CGFloat(sender.doubleValue)
+        case .toy:
+            toyBounciness = CGFloat(sender.doubleValue)
+        case nil:
+            return
+        }
         statChangerView?.updateLabels()
-        controls.setStatus("Everything bounces at: \(Int(round(noodleBounciness * 100)))%")
+        controls.setStatus("\(statChangerTarget.map(statTargetName) ?? "Object") bounciness: \(Int(round(sender.doubleValue * 100)))%")
     }
 
     @objc func statGravityChanged(_ sender: NSSlider) {
-        noodleGravity = CGFloat(sender.doubleValue)
+        switch statChangerTarget {
+        case .noodle:
+            noodleGravity = CGFloat(sender.doubleValue)
+        case .toy:
+            toyGravity = CGFloat(sender.doubleValue)
+        case nil:
+            return
+        }
         statChangerView?.updateLabels()
-        controls.setStatus("Everything uses gravity: \(Int(round(noodleGravity)))")
+        controls.setStatus("\(statChangerTarget.map(statTargetName) ?? "Object") gravity: \(Int(round(sender.doubleValue)))")
     }
 
     @objc func statHungerChanged(_ sender: NSSlider) {
+        guard case .noodle? = statChangerTarget else { return }
         goldenBoneFed = false
         catView.hungerLocked = false
         noodleHunger = CGFloat(sender.doubleValue)
@@ -3195,10 +3322,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func statSizeChanged(_ sender: NSSlider) {
-        noodleSizeScale = CGFloat(sender.doubleValue)
-        catView.displayScale = noodleSizeScale
+        switch statChangerTarget {
+        case .noodle:
+            noodleSizeScale = CGFloat(sender.doubleValue)
+            catView.displayScale = noodleSizeScale
+        case .toy:
+            toySizeScale = CGFloat(sender.doubleValue)
+            (toyWindow?.contentView as? ToyView)?.displayScale = toySizeScale
+        case nil:
+            return
+        }
         statChangerView?.updateLabels()
-        controls.setStatus("Noodle size: \(Int(round(noodleSizeScale * 100)))%")
+        controls.setStatus("\(statChangerTarget.map(statTargetName) ?? "Object") size: \(Int(round(sender.doubleValue * 100)))%")
     }
 
     @objc func closeStatChanger(_ sender: Any?) {
@@ -3206,11 +3341,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func hideStatChanger() {
+        if statMachineToy {
+            toyWindow?.orderFrontRegardless()
+        }
         statChangerWindow?.orderOut(nil)
         statChangerWindow = nil
         statChangerView = nil
         machineTreatReady = false
         statMachineHasNoodle = false
+        statChangerTarget = nil
+        statMachineToy = false
         moving = true
         chooseNewTarget()
         restorePetsToDesktop()
@@ -3331,18 +3471,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         if let statMachineWindow = statChangerWindow, statMachineWindow.frame.intersects(petWindow.frame) {
-            guard machineTreatReady else {
-                statChangerView?.setStatus("Noodle refuses — put a treat in first")
-                rejectMachineEntry()
-                return
-            }
             statMachineHasNoodle = true
-            statChangerView?.setNoodleInside(true)
+            if statMachineToy {
+                toyWindow?.orderFrontRegardless()
+                statMachineToy = false
+            }
+            showStatTarget(.noodle)
             noodleVelocity = .zero
             noodleIsBouncing = false
             moving = false
             statMachineWindow.orderFrontRegardless()
             petWindow.orderFrontRegardless()
+            statChangerView?.setStatus("Noodle is inside — adjust the available stats")
             controls.setStatus("Noodle is inside the stat changer")
             return
         }
@@ -3691,6 +3831,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         robotTarget = .zero
         robotNextTurnAt = Date.distantPast
         boomboxPlaying = false
+        statMachineToy = false
         controls.setStatus(status)
     }
 
@@ -3730,9 +3871,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         toyReturning = false
 
+        if let statMachineWindow = statChangerWindow,
+           statMachineWindow.frame.intersects(window.frame) {
+            toyIsThrown = false
+            fetchingToy = false
+            toyVelocity = .zero
+            trapArmed = false
+            trapTriggered = false
+            window.orderOut(nil)
+            showStatTarget(.toy(kind))
+            statChangerView?.setStatus("\(statTargetName(.toy(kind))) is inside — adjust the available stats")
+            return
+        }
+
         if kind == .treat,
-           let machineWindow = cloneMachineWindow ?? statChangerWindow,
-           machineWindow.frame.intersects(window.frame) {
+           let cloneMachineWindow,
+           cloneMachineWindow.frame.intersects(window.frame) {
             window.orderOut(nil)
             toyWindow = nil
             machineTreatReady = true
@@ -4094,6 +4248,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             catView.setWalking(popcornWalkingOut && !popcornOffscreen)
         } else if noodleIsBouncing {
             updateNoodleBounce()
+        } else if statMachineToy {
+            catView.setWalking(false)
         } else if toyKind == .robot, let toyWindow {
             updateRobotToy(toyWindow)
             let robotCenter = NSPoint(x: toyWindow.frame.midX, y: toyWindow.frame.midY)
@@ -4102,18 +4258,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else if toyIsThrown, let toyWindow {
             let screen = toyWindow.screen?.visibleFrame ?? activeVisibleFrame()
             var nextOrigin = toyWindow.frame.origin
-            toyVelocity.y -= noodleGravity / 60.0
+            toyVelocity.y -= toyGravity / 60.0
             nextOrigin.x += toyVelocity.x / 60.0
             nextOrigin.y += toyVelocity.y / 60.0
             var bounced = false
 
             if nextOrigin.x <= screen.minX || nextOrigin.x + toyWindow.frame.width >= screen.maxX {
-                toyVelocity.x *= -noodleBounciness
+                toyVelocity.x *= -toyBounciness
                 nextOrigin.x = min(max(nextOrigin.x, screen.minX), screen.maxX - toyWindow.frame.width)
                 bounced = true
             }
             if nextOrigin.y <= screen.minY || nextOrigin.y + toyWindow.frame.height >= screen.maxY {
-                toyVelocity.y *= -noodleBounciness
+                toyVelocity.y *= -toyBounciness
                 nextOrigin.y = min(max(nextOrigin.y, screen.minY), screen.maxY - toyWindow.frame.height)
                 bounced = true
             }
@@ -4121,9 +4277,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let toyCenter = NSPoint(x: nextOrigin.x + toyWindow.frame.width / 2, y: nextOrigin.y + toyWindow.frame.height / 2)
             for wall in wallSegments where distance(from: toyCenter, to: wall) < 30 {
                 if abs(wall.end.x - wall.start.x) >= abs(wall.end.y - wall.start.y) {
-                    toyVelocity.y *= -noodleBounciness
+                    toyVelocity.y *= -toyBounciness
                 } else {
-                    toyVelocity.x *= -noodleBounciness
+                    toyVelocity.x *= -toyBounciness
                 }
                 bounced = true
                 break
