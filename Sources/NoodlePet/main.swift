@@ -1507,7 +1507,17 @@ final class CatView: NSView {
     var avatarImage: NSImage? { didSet { needsDisplay = true } }
     var isWalking = true
     var isCaged = false { didSet { needsDisplay = true } }
-    var speechText = "" { didSet { needsDisplay = true } }
+    var speechText = "" {
+        didSet {
+            // The launch/reset box is a true pause state. Never let a queued
+            // action or timer put a speech bubble over the closed box.
+            if !speechText.isEmpty && (isInLaunchBox || delegate?.isLaunchBoxPaused == true) {
+                speechText = ""
+                return
+            }
+            needsDisplay = true
+        }
+    }
     var hunger: CGFloat = 100 { didSet { needsDisplay = true } }
     var hungerLocked = false { didSet { needsDisplay = true } }
     var isDead = false { didSet { needsDisplay = true } }
@@ -1892,7 +1902,7 @@ final class CatView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let hostWindow else { return }
-        guard !isDead else { return }
+        guard !isDead, !isInLaunchBox, delegate?.isLaunchBoxPaused != true else { return }
         let screenPoint = NSEvent.mouseLocation
         let now = Date()
         let elapsed = max(0.001, now.timeIntervalSince(lastDragTime))
@@ -2167,6 +2177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var isMoving: Bool { moving }
     var isCaged: Bool { catView?.isCaged ?? false }
     var isFollowingMouse: Bool { followingMouse }
+    var isLaunchBoxPaused: Bool {
+        (catView?.isInLaunchBox ?? false) || resetBoxDropping || resetBoxDropAt != Date.distantPast
+    }
 
     func makePetMenu() -> NSMenu {
         let menu = NSMenu()
@@ -2304,6 +2317,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     private func startOpeningGreeting() {
+        guard !isLaunchBoxPaused else {
+            openingGreetingActive = false
+            catView.speechText = ""
+            return
+        }
         openingGreetingIndex = 0
         openingGreetingActive = true
         catView.speechText = openingGreetingLines[openingGreetingIndex]
@@ -3763,9 +3781,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
     }
 
+    private func updateLaunchBox(now: Date) -> Bool {
+        if !resetBoxDropping && resetBoxDropAt != Date.distantPast && now >= resetBoxDropAt {
+            let screen = activeVisibleFrame()
+            resetBoxTarget = NSPoint(
+                x: min(max(screen.maxX - petSize - 80, screen.minX + 12), screen.maxX - petSize - 12),
+                y: screen.maxY - petSize - 36
+            )
+            petWindow.setFrameOrigin(NSPoint(x: resetBoxTarget.x, y: screen.maxY + 30))
+            petWindow.orderFrontRegardless()
+            noodleManuallyOffscreen = false
+            resetBoxDropAt = Date.distantPast
+            resetBoxDropping = true
+            catView.isInLaunchBox = true
+            catView.speechText = ""
+        }
+
+        if resetBoxDropping {
+            let current = petWindow.frame.origin
+            let distance = current.y - resetBoxTarget.y
+            if distance <= 2 {
+                petWindow.setFrameOrigin(resetBoxTarget)
+                resetBoxDropping = false
+                catView.speechText = ""
+                controls.setStatus("Noodle's box arrived — click it to open him")
+            } else {
+                let step = min(distance, max(10, distance * 0.08))
+                petWindow.setFrameOrigin(NSPoint(x: resetBoxTarget.x, y: current.y - step))
+            }
+        }
+
+        guard isLaunchBoxPaused else { return false }
+        // Keep every pet timer frozen while Noodle is off-screen or boxed.
+        lastHungerUpdate = now
+        catView.speechText = ""
+        catView.trick = ""
+        catView.setWalking(false)
+        catView.showTreats = false
+        return true
+    }
+
     private func tick() {
-        catView.animationTime += 1.0 / 60.0
         let now = Date()
+        if updateLaunchBox(now: now) {
+            return
+        }
+        catView.animationTime += 1.0 / 60.0
         let hungerElapsed = now.timeIntervalSince(lastHungerUpdate)
         if goldenBoneFed {
             noodleHunger = 100
@@ -3806,35 +3867,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         if Date() >= treatSpeechUntil && (catView.speechText == "Yum!" || catView.speechText == "Treats!" || catView.speechText == "Nom nom!" || catView.speechText == "Catch me!" || catView.speechText == "Tagged!" || catView.speechText == "DANCE BREAK! TURN VOLUME UP UP UP!" || catView.speechText == "Hey! Put me down!" || catView.speechText == "Nope!" || catView.speechText == "Good treat!" || catView.speechText == "Follow me!" || catView.speechText == "Free!") {
             catView.speechText = ""
-        }
-        if !resetBoxDropping && resetBoxDropAt != Date.distantPast && now >= resetBoxDropAt {
-            let screen = activeVisibleFrame()
-            resetBoxTarget = NSPoint(
-                x: min(max(screen.maxX - petSize - 80, screen.minX + 12), screen.maxX - petSize - 12),
-                y: screen.maxY - petSize - 36
-            )
-            petWindow.setFrameOrigin(NSPoint(x: resetBoxTarget.x, y: screen.maxY + 30))
-            petWindow.orderFrontRegardless()
-            noodleManuallyOffscreen = false
-            resetBoxDropAt = Date.distantPast
-            resetBoxDropping = true
-            catView.isInLaunchBox = true
-            catView.speechText = ""
-        }
-        if resetBoxDropping {
-            let current = petWindow.frame.origin
-            let distance = current.y - resetBoxTarget.y
-            if distance <= 2 {
-                petWindow.setFrameOrigin(resetBoxTarget)
-                resetBoxDropping = false
-                catView.speechText = ""
-                controls.setStatus("Noodle's box arrived — click it to open him")
-            } else {
-                let step = min(distance, max(10, distance * 0.08))
-                petWindow.setFrameOrigin(NSPoint(x: resetBoxTarget.x, y: current.y - step))
-                catView.setWalking(false)
-                return
-            }
         }
         if now >= nextAutomaticFollowAt && !catView.isCaged && !noodleManuallyOffscreen && !followingMouse {
             nextAutomaticFollowAt = now.addingTimeInterval(automaticFollowInterval)
