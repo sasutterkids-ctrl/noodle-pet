@@ -2011,7 +2011,6 @@ final class ControlView: NSView {
         _ = makeButton("Wave", #selector(AppDelegate.wave(_:)))
         _ = makeButton("Zoomies", #selector(AppDelegate.zoomies(_:)))
         _ = makeButton("Nap", #selector(AppDelegate.nap(_:)))
-        _ = makeButton("Disco mode", #selector(AppDelegate.discoMode(_:)))
         _ = makeButton("Fetch ball", #selector(AppDelegate.fetchBall(_:)))
         _ = makeButton("Toss yarn", #selector(AppDelegate.tossYarn(_:)))
         _ = makeButton("Spawn robot", #selector(AppDelegate.spawnRobot(_:)))
@@ -2192,6 +2191,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         careItem.submenu = careMenu
         menu.addItem(careItem)
 
+        let avatarMenu = NSMenu()
+        add("Import pet photo", #selector(importPhoto(_:)), to: avatarMenu)
+        add("Style as Noodle", #selector(stylePhoto(_:)), to: avatarMenu)
+        let avatarItem = NSMenuItem(title: "Avatar", action: nil, keyEquivalent: "")
+        avatarItem.submenu = avatarMenu
+        menu.addItem(avatarItem)
+
         let tricksMenu = NSMenu()
         add("Wave", #selector(wave(_:)), to: tricksMenu)
         add("Zoomies", #selector(zoomies(_:)), to: tricksMenu)
@@ -2203,6 +2209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         add("Stretch", #selector(stretch(_:)), to: tricksMenu)
         add("Dance", #selector(dance(_:)), to: tricksMenu)
         add(spinMode ? "Stop spinning" : "Spin until stopped", #selector(toggleSpinMode(_:)), to: tricksMenu)
+        add("Teach a trick", #selector(teachTrick(_:)), to: tricksMenu)
         let tricksItem = NSMenuItem(title: "Tricks", action: nil, keyEquivalent: "")
         tricksItem.submenu = tricksMenu
         menu.addItem(tricksItem)
@@ -2239,6 +2246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         followItem.target = self
         followItem.state = followingMouse ? .on : .off
         add("Rest on a random window", #selector(restOnRandomWindow(_:)), to: movementMenu)
+        add("Nudge front window", #selector(nudgeWindow(_:)), to: movementMenu)
         add("Tidy open windows", #selector(organizeWindows(_:)), to: movementMenu)
         add(moving ? "Pause wandering" : "Resume wandering", #selector(toggleMovementFromMenu(_:)), to: movementMenu)
         let movementItem = NSMenuItem(title: "Movement", action: nil, keyEquivalent: "")
