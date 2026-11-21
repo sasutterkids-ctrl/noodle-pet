@@ -1863,7 +1863,7 @@ final class CatView: NSView {
         if !speechText.isEmpty {
             let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: NSColor(calibratedRed: 0.20, green: 0.14, blue: 0.25, alpha: 1)]
             let textSize = (speechText as NSString).size(withAttributes: attributes)
-            let bubble = NSRect(x: max(4, min(bounds.width - textSize.width - 28, bounds.midX - textSize.width / 2 - 14)), y: bounds.maxY - 42, width: textSize.width + 28, height: 27)
+            let bubble = NSRect(x: max(4, min(bounds.width - textSize.width - 28, bounds.midX - textSize.width / 2 - 14)), y: hungerRect.maxY + 2, width: textSize.width + 28, height: 27)
             NSColor.white.withAlphaComponent(0.94).setFill()
             NSBezierPath(roundedRect: bubble, xRadius: 12, yRadius: 12).fill()
             (speechText as NSString).draw(at: NSPoint(x: bubble.minX + 14, y: bubble.minY + 7), withAttributes: attributes)
