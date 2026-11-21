@@ -3762,7 +3762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             robotNextTurnAt = Date().addingTimeInterval(0.5)
             catView.speechText = "Ready!"
             treatSpeechUntil = Date().addingTimeInterval(1.5)
-            controls.setStatus("Robot ready — use W A S D")
+            controls.setStatus("Robot ready — use W A S D; Noodle will follow it")
             return
         }
 
@@ -4096,6 +4096,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             updateNoodleBounce()
         } else if toyKind == .robot, let toyWindow {
             updateRobotToy(toyWindow)
+            let robotCenter = NSPoint(x: toyWindow.frame.midX, y: toyWindow.frame.midY)
+            let remaining = moveNoodleToward(NSPoint(x: robotCenter.x - petSize / 2, y: robotCenter.y - petSize / 2))
+            catView.setWalking(remaining >= 16)
         } else if toyIsThrown, let toyWindow {
             let screen = toyWindow.screen?.visibleFrame ?? activeVisibleFrame()
             var nextOrigin = toyWindow.frame.origin
